@@ -1,13 +1,19 @@
 import logging
 import os
+import secrets
+import hashlib
 import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from pydantic import BaseModel
+from sqlalchemy import DateTime, String, text, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -24,9 +30,72 @@ engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+    return f"pbkdf2_sha256${salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, salt, expected_digest = stored_hash.split("$", 2)
+    except ValueError:
+        return False
+
+    if algorithm != "pbkdf2_sha256":
+        return False
+
+    actual_digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+    return secrets.compare_digest(actual_digest.hex(), expected_digest)
+
+
+def validate_auth_request(payload: AuthRequest) -> str:
+    email = normalize_email(payload.email)
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email address.")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters.")
+    return email
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Backend starting")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ready")
     yield
     await engine.dispose()
     logger.info("Backend stopped")
@@ -69,3 +138,36 @@ async def health():
         db_status = "error"
 
     return {"status": "ok", "database": db_status}
+
+
+@app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: AuthRequest):
+    email = validate_auth_request(payload)
+    user = User(email=email, password_hash=hash_password(payload.password))
+
+    async with SessionLocal() as session:
+        session.add(user)
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
+        await session.refresh(user)
+
+    logger.info("Registered user %s", user.id)
+    return UserResponse(id=user.id, email=user.email)
+
+
+@app.post("/auth/login", response_model=UserResponse)
+async def login(payload: AuthRequest):
+    email = normalize_email(payload.email)
+
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+
+    logger.info("Logged in user %s", user.id)
+    return UserResponse(id=user.id, email=user.email)

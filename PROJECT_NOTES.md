@@ -28,7 +28,7 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | Increment | Goal                                                                 | Status      |
 | --------- | -------------------------------------------------------------------- | ----------- |
 | 1         | Dockerized skeleton with FastAPI, React, Postgres, and health checks | Complete    |
-| 2         | Persisted users, password hashing, JWT auth, and auth UI             | Not started |
+| 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
 | 3         | Private watchlist CRUD with max-ten and duplicate validation         | Not started |
 | 4         | `yfinance` price history endpoint and UI display states              | Not started |
 | 5         | Logging polish, consistent errors, and user experience pass          | Not started |
@@ -145,7 +145,6 @@ Reasoning:
 
 Likely future additions:
 
-- Backend auth/passwords: `passlib[bcrypt]`, `python-jose` or `PyJWT`, `python-multipart` if form login is used.
 - Backend data: `yfinance`, possibly `pandas` via `yfinance` transitive requirements.
 - Frontend charting: only if time allows and it improves clarity.
 - Tests: `pytest`, `httpx`, and possibly React test tooling if frontend tests become worthwhile.
@@ -172,7 +171,7 @@ Reasoning:
 
 - Reviewers can copy one file and run the stack.
 - It makes secrets and service configuration visible without hardcoding every value in application code.
-- It prepares the auth increment by reserving `JWT_SECRET`.
+- It keeps local defaults visible and avoids hardcoding configuration in application code.
 
 Trade-off:
 
@@ -216,38 +215,99 @@ Expected health response:
 {"status":"ok","database":"ok"}
 ```
 
-## Next Increment Plan: Auth
+## Increment 2 Progress Check
 
-Goal: users can register, log in, log out, and remain authenticated across browser refresh.
+Goal: users can register, log in, log out, and remain identified across browser refresh without implementing production-grade authentication.
+
+Completed:
+
+- Added `users` table with:
+  - `id`
+  - `email`
+  - `password_hash`
+  - `created_at`
+  - `updated_at`
+- Added startup table creation via SQLAlchemy metadata.
+- Added salted PBKDF2 password hashing using Python standard library.
+- Added endpoints:
+  - `POST /auth/register`
+  - `POST /auth/login`
+- Added frontend register/login form.
+- Store returned `{ id, email }` user object in `localStorage`.
+- Added logout by clearing local user state.
+- Added `backend/scripts/seed.py` to create demo users for local testing.
+
+### Lightweight Auth Decision
+
+Decision: do not add JWTs, server-side sessions, cookies, OAuth, or token refresh for this take-home.
+
+Reasoning:
+
+- The assignment needs register/login/logout behavior and private watchlists, but not production hardening.
+- A lightweight identity flow keeps the implementation focused on the core product requirements.
+- Passwords are still hashed so the database does not store plaintext passwords.
+- Returning a user object gives Increment 3 a simple owner reference for watchlist records.
+
+Current auth flow:
+
+```mermaid
+flowchart LR
+  Form[Login_or_Register_Form] -->|"email and password"| Backend[FastAPI]
+  Backend -->|"lookup or create user"| Users[(users_table)]
+  Backend -->|"id and email"| Browser[localStorage_user]
+```
+
+Trade-off:
+
+- This is not secure. In Increment 3, watchlist calls will use the locally stored user ID as the owner reference. That is acceptable for this scoped take-home only and should be called out in the final write-up as something production would replace with real sessions or signed tokens.
+
+Database table:
+
+```text
+users
+- id string primary key
+- email string unique not null
+- password_hash string not null
+- created_at timestamp
+- updated_at timestamp
+```
+
+Verification to run:
+
+```sh
+docker compose up --build
+docker compose exec backend python -m scripts.seed
+curl -X POST http://localhost:8000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@example.com","password":"password123"}'
+curl -X POST http://localhost:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+## Next Increment Plan: Watchlist CRUD
+
+Goal: authenticated-by-convention users can manage private watchlists by sending the locally stored user ID with each watchlist request.
 
 Planned backend work:
 
-- Add `User` model with email, hashed password, and timestamps.
-- Add database initialization or migrations.
-- Add password hashing.
-- Add JWT creation and auth dependency.
-- Add endpoints:
-  - `POST /auth/register`
-  - `POST /auth/login`
-  - `GET /auth/me`
+- Add `watchlist_items` table with `id`, `user_id`, `ticker`, and `created_at`.
+- Add foreign key from `watchlist_items.user_id` to `users.id`.
+- Add unique constraint on `(user_id, ticker)`.
+- Add `GET /watchlist`, `POST /watchlist`, and `DELETE /watchlist/{ticker}`.
+- Use a simple `X-User-Id` header to identify the current user.
+- Enforce max ten tickers per user on the backend.
 
 Planned frontend work:
 
-- Add login/register forms.
-- Store token client-side for the take-home scope.
-- Add authenticated/unauthenticated UI states.
-- Add logout button that clears local auth state.
-
-Key decisions to revisit during Increment 2:
-
-- Whether to use Alembic or startup `create_all`. Default for speed: startup `create_all`, with production notes explaining migrations.
-- Whether login should accept JSON or OAuth2 form data. Default for frontend simplicity: JSON.
-- Whether token storage should be `localStorage` or an HTTP-only cookie. Default for take-home speed: `localStorage`, with production notes explaining cookie/session hardening.
+- Add dashboard watchlist panel.
+- Send stored `user.id` as `X-User-Id`.
+- Add/remove tickers with clear errors for duplicates, invalid input, and max-ten.
 
 ## Risks And Watch Items
 
 - `yfinance` can return empty data or fail due to upstream scraping changes. The price increment must handle empty/error states explicitly.
-- Watchlist privacy should always derive `user_id` from the authenticated token, never from request body data.
+- Watchlist ownership will use the locally stored user ID for this take-home. Document that this is not secure and should be replaced by real auth in production.
 - The max-ten ticker rule belongs on the backend, even if the frontend also disables the add form.
 - Docker startup order is not a substitute for app-level error handling. The backend should still handle temporary database errors cleanly.
 - Keep scope tight. A working vertical slice is more valuable than elaborate charting or broad frontend tests.
