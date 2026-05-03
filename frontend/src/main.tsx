@@ -258,6 +258,9 @@ function Dashboard({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [pricesByTicker, setPricesByTicker] = useState<Record<string, PriceHistoryResponse>>({});
+  const [priceErrors, setPriceErrors] = useState<Record<string, string>>({});
+  const [loadingTickers, setLoadingTickers] = useState<Set<string>>(new Set());
 
   const loadWatchlist = useCallback(() => {
     setIsLoading(true);
@@ -274,9 +277,82 @@ function Dashboard({
       .finally(() => setIsLoading(false));
   }, [user.id]);
 
+  const loadPricesFor = useCallback(async (tickers: string[]) => {
+    if (tickers.length === 0) {
+      return;
+    }
+    setLoadingTickers((current) => {
+      const next = new Set(current);
+      for (const t of tickers) {
+        next.add(t);
+      }
+      return next;
+    });
+
+    await Promise.all(
+      tickers.map(async (nextTicker) => {
+        try {
+          const response = await fetch(`${apiBaseUrl}/prices/${encodeURIComponent(nextTicker)}`);
+          const data = await parseApiResponse<PriceHistoryResponse>(response);
+          setPricesByTicker((current) => ({ ...current, [nextTicker]: data }));
+          setPriceErrors((current) => {
+            if (!(nextTicker in current)) {
+              return current;
+            }
+            const { [nextTicker]: _removed, ...rest } = current;
+            return rest;
+          });
+        } catch (priceError: unknown) {
+          const detail = priceError instanceof Error ? priceError.message : "Could not load prices.";
+          setPriceErrors((current) => ({ ...current, [nextTicker]: detail }));
+        } finally {
+          setLoadingTickers((current) => {
+            const next = new Set(current);
+            next.delete(nextTicker);
+            return next;
+          });
+        }
+      }),
+    );
+  }, []);
+
   useEffect(() => {
     loadWatchlist();
   }, [loadWatchlist]);
+
+  useEffect(() => {
+    const tickerSet = new Set(watchlist.map((item) => item.ticker));
+
+    setPricesByTicker((current) => {
+      const next: Record<string, PriceHistoryResponse> = {};
+      for (const t of tickerSet) {
+        if (current[t]) {
+          next[t] = current[t];
+        }
+      }
+      return next;
+    });
+    setPriceErrors((current) => {
+      const next: Record<string, string> = {};
+      for (const t of tickerSet) {
+        if (current[t]) {
+          next[t] = current[t];
+        }
+      }
+      return next;
+    });
+
+    if (tickerSet.size > 0) {
+      loadPricesFor(Array.from(tickerSet));
+    }
+  }, [watchlist, loadPricesFor]);
+
+  const refreshAllPrices = useCallback(() => {
+    if (watchlist.length === 0) {
+      return;
+    }
+    loadPricesFor(watchlist.map((item) => item.ticker));
+  }, [watchlist, loadPricesFor]);
 
   async function handleAddTicker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -343,9 +419,19 @@ function Dashboard({
             <h3>Watchlist</h3>
             <p className="muted">{watchlist.length}/10 tickers</p>
           </div>
-          <button className="secondary" type="button" onClick={loadWatchlist}>
-            Refresh
-          </button>
+          <div className="actions">
+            <button
+              className="secondary"
+              type="button"
+              onClick={refreshAllPrices}
+              disabled={watchlist.length === 0 || loadingTickers.size > 0}
+            >
+              {loadingTickers.size > 0 ? "Refreshing prices..." : "Refresh prices"}
+            </button>
+            <button className="secondary" type="button" onClick={loadWatchlist}>
+              Reload list
+            </button>
+          </div>
         </div>
 
         <form className="ticker-form" onSubmit={handleAddTicker}>
@@ -374,30 +460,54 @@ function Dashboard({
           <p className="empty-state">No tickers yet. Add one to start your watchlist.</p>
         ) : (
           <ul className="ticker-list">
-            {watchlist.map((item) => (
-              <li key={item.id} className={selectedTicker === item.ticker ? "selected" : undefined}>
-                <button
-                  className="ticker-select"
-                  type="button"
-                  onClick={() => setSelectedTicker(item.ticker)}
-                  aria-pressed={selectedTicker === item.ticker}
-                >
-                  <strong>{item.ticker}</strong>
-                  <span className="muted">View prices</span>
-                </button>
-                <button className="secondary" type="button" onClick={() => handleRemoveTicker(item.ticker)}>
-                  Remove
-                </button>
-              </li>
-            ))}
+            {watchlist.map((item) => {
+              const summary = summarizeHistory(pricesByTicker[item.ticker]);
+              const isLoadingPrice = loadingTickers.has(item.ticker);
+              const priceError = priceErrors[item.ticker];
+              return (
+                <li key={item.id} className={selectedTicker === item.ticker ? "selected" : undefined}>
+                  <button
+                    className="ticker-select"
+                    type="button"
+                    onClick={() => setSelectedTicker(item.ticker)}
+                    aria-pressed={selectedTicker === item.ticker}
+                  >
+                    <span className="ticker-symbol">
+                      <strong>{item.ticker}</strong>
+                      {isLoadingPrice && !summary ? (
+                        <span className="muted">Loading...</span>
+                      ) : null}
+                    </span>
+                    {summary ? (
+                      <span className="ticker-summary">
+                        <span className="ticker-price">{formatPrice(summary.latestClose)}</span>
+                        <span className={`ticker-change ${summary.changeTone}`}>
+                          {summary.changeText}
+                        </span>
+                      </span>
+                    ) : priceError ? (
+                      <span className="muted">No data</span>
+                    ) : pricesByTicker[item.ticker]?.warning ? (
+                      <span className="muted">{pricesByTicker[item.ticker].warning}</span>
+                    ) : null}
+                  </button>
+                  <button className="secondary" type="button" onClick={() => handleRemoveTicker(item.ticker)}>
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
 
       {selectedTicker ? (
         <PricePanel
-          key={selectedTicker}
           ticker={selectedTicker}
+          history={pricesByTicker[selectedTicker] ?? null}
+          error={priceErrors[selectedTicker] ?? null}
+          isLoading={loadingTickers.has(selectedTicker)}
+          onRefresh={() => loadPricesFor([selectedTicker])}
           onClose={() => setSelectedTicker(null)}
         />
       ) : watchlist.length > 0 ? (
@@ -416,37 +526,23 @@ function Dashboard({
   );
 }
 
-function PricePanel({ ticker, onClose }: { ticker: string; onClose: () => void }) {
-  const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const loadPrices = useCallback(() => {
-    setIsLoading(true);
-    setError(null);
-    fetch(`${apiBaseUrl}/prices/${encodeURIComponent(ticker)}`)
-      .then((response) => parseApiResponse<PriceHistoryResponse>(response))
-      .then(setHistory)
-      .catch((loadError: unknown) => {
-        const message = loadError instanceof Error ? loadError.message : "Could not load price history.";
-        setError(message);
-      })
-      .finally(() => setIsLoading(false));
-  }, [ticker]);
-
-  useEffect(() => {
-    loadPrices();
-  }, [loadPrices]);
-
+function PricePanel({
+  ticker,
+  history,
+  error,
+  isLoading,
+  onRefresh,
+  onClose,
+}: {
+  ticker: string;
+  history: PriceHistoryResponse | null;
+  error: string | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  onClose: () => void;
+}) {
   const recent = history?.points.slice(-50).reverse() ?? [];
-  const latest = history?.points.at(-1) ?? null;
-  const earliest = history?.points.at(0) ?? null;
-  const change =
-    latest && earliest && latest.close != null && earliest.close != null
-      ? latest.close - earliest.close
-      : null;
-  const changePct =
-    change != null && earliest?.close ? (change / earliest.close) * 100 : null;
+  const summary = summarizeHistory(history);
 
   return (
     <section className="price-panel">
@@ -461,7 +557,7 @@ function PricePanel({ ticker, onClose }: { ticker: string; onClose: () => void }
           ) : null}
         </div>
         <div className="actions">
-          <button className="secondary" type="button" onClick={loadPrices} disabled={isLoading}>
+          <button className="secondary" type="button" onClick={onRefresh} disabled={isLoading}>
             {isLoading ? "Refreshing..." : "Refresh"}
           </button>
           <button className="secondary" type="button" onClick={onClose}>
@@ -478,19 +574,21 @@ function PricePanel({ ticker, onClose }: { ticker: string; onClose: () => void }
       ) : history && history.points.length > 0 ? (
         <>
           <div className="price-summary">
-            <SummaryStat label="Latest close" value={formatPrice(latest?.close)} />
-            <SummaryStat label="Latest time" value={formatTimestamp(latest?.timestamp)} />
+            <SummaryStat label="Latest close" value={formatPrice(summary?.latestClose)} />
+            <SummaryStat label="Latest time" value={formatTimestamp(summary?.latestTimestamp)} />
             <SummaryStat
               label="Change"
-              value={change != null ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}` : "-"}
-              tone={change != null ? (change >= 0 ? "positive" : "negative") : undefined}
+              value={summary?.changeAbs != null ? `${summary.changeAbs >= 0 ? "+" : ""}${summary.changeAbs.toFixed(2)}` : "-"}
+              tone={summary?.changeTone === "ticker-change-up" ? "positive" : summary?.changeTone === "ticker-change-down" ? "negative" : undefined}
             />
             <SummaryStat
               label="Change %"
-              value={changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "-"}
-              tone={changePct != null ? (changePct >= 0 ? "positive" : "negative") : undefined}
+              value={summary?.changePct != null ? `${summary.changePct >= 0 ? "+" : ""}${summary.changePct.toFixed(2)}%` : "-"}
+              tone={summary?.changeTone === "ticker-change-up" ? "positive" : summary?.changeTone === "ticker-change-down" ? "negative" : undefined}
             />
           </div>
+
+          <PriceChart points={history.points} />
 
           <div className="price-table-scroll">
             <table className="price-table">
@@ -527,6 +625,148 @@ function PricePanel({ ticker, onClose }: { ticker: string; onClose: () => void }
       ) : null}
     </section>
   );
+}
+
+type HistorySummary = {
+  latestClose: number | null;
+  latestTimestamp: string | null;
+  changeAbs: number | null;
+  changePct: number | null;
+  changeText: string;
+  changeTone: "ticker-change-up" | "ticker-change-down" | "ticker-change-flat";
+};
+
+function summarizeHistory(history: PriceHistoryResponse | null | undefined): HistorySummary | null {
+  if (!history || history.points.length === 0) {
+    return null;
+  }
+
+  const closes = history.points.filter((point) => point.close != null);
+  if (closes.length === 0) {
+    return null;
+  }
+
+  const earliest = closes[0];
+  const latest = closes[closes.length - 1];
+  const earliestClose = earliest.close as number;
+  const latestClose = latest.close as number;
+  const changeAbs = latestClose - earliestClose;
+  const changePct = earliestClose !== 0 ? (changeAbs / earliestClose) * 100 : null;
+
+  const tone =
+    changeAbs > 0
+      ? "ticker-change-up"
+      : changeAbs < 0
+        ? "ticker-change-down"
+        : "ticker-change-flat";
+  const sign = changeAbs > 0 ? "+" : changeAbs < 0 ? "-" : "";
+  const absChange = Math.abs(changeAbs).toFixed(2);
+  const pctText = changePct != null ? `${sign}${Math.abs(changePct).toFixed(2)}%` : "-";
+
+  return {
+    latestClose,
+    latestTimestamp: latest.timestamp,
+    changeAbs,
+    changePct,
+    changeText: `${sign}${absChange} (${pctText})`,
+    changeTone: tone,
+  };
+}
+
+function PriceChart({ points }: { points: PricePoint[] }) {
+  const usable = points.filter((point) => point.open != null && point.close != null);
+  if (usable.length < 2) {
+    return null;
+  }
+
+  const bars = usable.slice(-60);
+  const closes = bars.map((bar) => bar.close as number);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+
+  const viewBoxWidth = 640;
+  const viewBoxHeight = 240;
+  const chartLeft = 8;
+  const chartRight = viewBoxWidth - 56;
+  const chartTop = 16;
+  const chartBottom = viewBoxHeight - 32;
+  const chartWidth = chartRight - chartLeft;
+  const chartHeight = chartBottom - chartTop;
+  const slotWidth = chartWidth / bars.length;
+  const barWidth = Math.max(slotWidth - 1.5, 1);
+  const mid = (min + max) / 2;
+
+  return (
+    <svg
+      className="price-chart"
+      viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+      role="img"
+      aria-label="Bar chart of close prices"
+    >
+      <line x1={chartLeft} x2={chartRight} y1={chartTop} y2={chartTop} className="chart-grid" />
+      <line
+        x1={chartLeft}
+        x2={chartRight}
+        y1={chartTop + chartHeight / 2}
+        y2={chartTop + chartHeight / 2}
+        className="chart-grid"
+      />
+      <line x1={chartLeft} x2={chartRight} y1={chartBottom} y2={chartBottom} className="chart-grid" />
+
+      <text x={chartRight + 6} y={chartTop + 4} className="chart-label">
+        {max.toFixed(2)}
+      </text>
+      <text x={chartRight + 6} y={chartTop + chartHeight / 2 + 4} className="chart-label">
+        {mid.toFixed(2)}
+      </text>
+      <text x={chartRight + 6} y={chartBottom + 4} className="chart-label">
+        {min.toFixed(2)}
+      </text>
+
+      {bars.map((bar, index) => {
+        const close = bar.close as number;
+        const open = bar.open as number;
+        const normalized = (close - min) / range;
+        const barHeight = Math.max(normalized * chartHeight, 1.5);
+        const barY = chartTop + (chartHeight - barHeight);
+        const barX = chartLeft + index * slotWidth;
+        const isUp = close >= open;
+        return (
+          <rect
+            key={bar.timestamp}
+            x={barX}
+            y={barY}
+            width={barWidth}
+            height={barHeight}
+            className={`chart-bar ${isUp ? "chart-bar-up" : "chart-bar-down"}`}
+          >
+            <title>{`${formatTimestamp(bar.timestamp)} | O ${open.toFixed(2)} | C ${close.toFixed(2)}`}</title>
+          </rect>
+        );
+      })}
+
+      <text x={chartLeft} y={viewBoxHeight - 8} className="chart-label">
+        {formatChartTime(bars[0].timestamp)}
+      </text>
+      <text x={chartRight} y={viewBoxHeight - 8} className="chart-label" textAnchor="end">
+        {formatChartTime(bars[bars.length - 1].timestamp)}
+      </text>
+    </svg>
+  );
+}
+
+function formatChartTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function SummaryStat({

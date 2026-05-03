@@ -261,14 +261,14 @@ h1 {
 }
 
 .ticker-select {
-  align-items: baseline;
+  align-items: center;
   background: transparent;
   border-radius: 12px;
   color: #172033;
   display: flex;
   flex: 1;
   gap: 0.75rem;
-  justify-content: flex-start;
+  justify-content: space-between;
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
@@ -284,6 +284,40 @@ h1 {
 .ticker-select[aria-pressed="true"] {
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.ticker-symbol {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 0.6rem;
+}
+
+.ticker-summary {
+  align-items: baseline;
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+  gap: 0.75rem;
+}
+
+.ticker-price {
+  color: #172033;
+  font-weight: 700;
+}
+
+.ticker-change {
+  font-weight: 700;
+}
+
+.ticker-change-up {
+  color: #047857;
+}
+
+.ticker-change-down {
+  color: #b91c1c;
+}
+
+.ticker-change-flat {
+  color: #64748b;
 }
 
 .empty-state {
@@ -396,6 +430,43 @@ h1 {
 
 .price-table tbody tr:hover {
   background: #f8fafc;
+}
+
+.price-chart {
+  background: linear-gradient(180deg, #f8fafc 0%, white 60%);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  height: auto;
+  padding: 0.5rem;
+  width: 100%;
+}
+
+.chart-grid {
+  stroke: #e2e8f0;
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.chart-label {
+  fill: #64748b;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.chart-bar {
+  transition: opacity 120ms ease;
+}
+
+.chart-bar:hover {
+  opacity: 0.75;
+}
+
+.chart-bar-up {
+  fill: #16a34a;
+}
+
+.chart-bar-down {
+  fill: #dc2626;
 }
 
 .actions {
