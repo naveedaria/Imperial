@@ -7,14 +7,12 @@ export function AuthPanel({
   isSubmitting,
   onModeChange,
   onSubmit,
-  onRecheck,
 }: {
   mode: AuthMode;
   error: string | null;
   isSubmitting: boolean;
   onModeChange: (mode: AuthMode) => void;
   onSubmit: (email: string, password: string) => void;
-  onRecheck?: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,9 +23,29 @@ export function AuthPanel({
   }
 
   return (
-    <div className="auth-layout">
+    <div className="auth-card">
+      <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "login"}
+          className={`auth-tab ${mode === "login" ? "active" : ""}`}
+          onClick={() => onModeChange("login")}
+        >
+          Log in
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "register"}
+          className={`auth-tab ${mode === "register" ? "active" : ""}`}
+          onClick={() => onModeChange("register")}
+        >
+          Register
+        </button>
+      </div>
+
       <form className="auth-form" onSubmit={handleSubmit}>
-        <h2>{mode === "login" ? "Log in" : "Create account"}</h2>
         <label>
           Email
           <input
@@ -49,36 +67,17 @@ export function AuthPanel({
             value={password}
           />
         </label>
+
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={isSubmitting}>
+
+        <button type="submit" className="auth-submit" disabled={isSubmitting}>
           {isSubmitting
             ? "Working..."
             : mode === "login"
               ? "Log in"
-              : "Register"}
+              : "Create account"}
         </button>
       </form>
-
-      <div className="side-panel">
-        <p>
-          This take-home uses a deliberately simple auth flow: password hash
-          lookup on the backend, then local user storage in the browser.
-        </p>
-        <button
-          className="secondary"
-          type="button"
-          onClick={() => onModeChange(mode === "login" ? "register" : "login")}
-        >
-          {mode === "login"
-            ? "Need an account?"
-            : "Already have an account?"}
-        </button>
-        {onRecheck ? (
-          <button className="secondary" type="button" onClick={onRecheck}>
-            Recheck services
-          </button>
-        ) : null}
-      </div>
     </div>
   );
 }

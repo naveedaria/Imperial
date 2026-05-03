@@ -22,11 +22,11 @@ export function PriceLineChart({
   const yRange = yMax - yMin || 1;
 
   const viewBoxWidth = 720;
-  const viewBoxHeight = 260;
-  const chartLeft = 12;
-  const chartRight = viewBoxWidth - 60;
-  const chartTop = 18;
-  const chartBottom = viewBoxHeight - 30;
+  const viewBoxHeight = 340;
+  const chartLeft = 52;
+  const chartRight = viewBoxWidth - 10;
+  const chartTop = 14;
+  const chartBottom = viewBoxHeight - 26;
   const chartWidth = chartRight - chartLeft;
   const chartHeight = chartBottom - chartTop;
 
@@ -89,17 +89,28 @@ export function PriceLineChart({
         className="chart-grid"
       />
 
-      <text x={chartRight + 8} y={chartTop + 4} className="chart-label">
+      <text
+        x={chartLeft - 6}
+        y={chartTop + 4}
+        className="chart-label"
+        textAnchor="end"
+      >
         {maxClose.toFixed(2)}
       </text>
       <text
-        x={chartRight + 8}
+        x={chartLeft - 6}
         y={chartTop + chartHeight / 2 + 4}
         className="chart-label"
+        textAnchor="end"
       >
         {((maxClose + minClose) / 2).toFixed(2)}
       </text>
-      <text x={chartRight + 8} y={chartBottom + 4} className="chart-label">
+      <text
+        x={chartLeft - 6}
+        y={chartBottom + 4}
+        className="chart-label"
+        textAnchor="end"
+      >
         {minClose.toFixed(2)}
       </text>
 

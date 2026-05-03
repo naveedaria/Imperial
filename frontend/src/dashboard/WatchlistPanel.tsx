@@ -20,8 +20,13 @@ export function WatchlistPanel({
 }) {
   const [draft, setDraft] = useState("");
 
+  const isAtLimit = watchlist.items.length >= 10;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isAtLimit) {
+      return;
+    }
     try {
       await watchlist.add(draft);
       setDraft("");
@@ -50,20 +55,25 @@ export function WatchlistPanel({
       <form className="ticker-form" onSubmit={handleSubmit}>
         <input
           aria-label="Ticker symbol"
+          disabled={isAtLimit}
           maxLength={10}
           onChange={(event) => setDraft(event.target.value.toUpperCase())}
-          placeholder="Add ticker (e.g. AAPL)"
-          required
+          placeholder={isAtLimit ? "Limit reached" : "Add ticker (e.g. AAPL)"}
+          required={!isAtLimit}
           type="text"
           value={draft}
         />
-        <button
-          type="submit"
-          disabled={watchlist.isSubmitting || watchlist.items.length >= 10}
-        >
+        <button type="submit" disabled={watchlist.isSubmitting || isAtLimit}>
           {watchlist.isSubmitting ? "Adding..." : "Add"}
         </button>
       </form>
+
+      {isAtLimit ? (
+        <p className="warning limit-notice">
+          You've reached the 10-ticker limit. Please remove a ticker to add a
+          new one to track.
+        </p>
+      ) : null}
 
       {watchlist.message ? (
         <p className="success">{watchlist.message}</p>

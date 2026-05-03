@@ -26,9 +26,4 @@ export type PriceHistoryResponse = {
   warning: string | null;
 };
 
-export type HealthResponse = {
-  status: string;
-  database: string;
-};
-
 export type Tone = "up" | "down" | "flat";

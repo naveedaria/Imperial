@@ -1,17 +1,14 @@
 import { useState } from "react";
 import { AuthMode, authenticate } from "./api/auth";
 import { AuthPanel } from "./auth/AuthPanel";
-import { useHealth } from "./auth/useHealth";
 import { useUser } from "./auth/useUser";
 import { Dashboard } from "./dashboard/Dashboard";
-import { StatusPill } from "./shared/StatusPill";
 
 export function App() {
   const { user, setUser } = useUser();
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { health, refresh: refreshHealth } = useHealth();
 
   async function handleAuth(email: string, password: string) {
     setIsSubmitting(true);
@@ -66,21 +63,18 @@ export function App() {
 
   return (
     <main className="shell">
-      <section className="card">
-        <p className="eyebrow">Imperial Capital Take-Home</p>
-        <h1>Stock Watchlist</h1>
-        <p className="lede">
-          Manage your private watchlist of up to ten tickers and view the last
-          seven days of 5-minute price history for any ticker on it.
-        </p>
-
-        <div className="status-grid">
-          <StatusPill label="Frontend" value="ok" />
-          <StatusPill label="Backend" value={health.status} />
-          <StatusPill label="Postgres" value={health.database} />
+      <section className="card card-auth">
+        <div className="auth-hero">
+          <span className="brand-mark" aria-hidden="true">
+            IC
+          </span>
+          <p className="brand-eyebrow">Imperial Capital</p>
+          <h1 className="auth-title">Stock Watchlist</h1>
+          <p className="muted auth-tagline">
+            Track up to ten tickers and view the last seven days of 5-minute
+            price history.
+          </p>
         </div>
-
-        {health.error ? <p className="error">{health.error}</p> : null}
 
         <AuthPanel
           mode={authMode}
@@ -88,7 +82,6 @@ export function App() {
           isSubmitting={isSubmitting}
           onModeChange={setAuthMode}
           onSubmit={handleAuth}
-          onRecheck={refreshHealth}
         />
       </section>
     </main>
