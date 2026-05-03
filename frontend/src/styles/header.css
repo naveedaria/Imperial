@@ -1,0 +1,64 @@
+.app-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: space-between;
+}
+
+.app-brand {
+  align-items: center;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.brand-mark {
+  align-items: center;
+  background: var(--color-text);
+  border-radius: 12px;
+  color: white;
+  display: inline-flex;
+  font-weight: 800;
+  height: 44px;
+  justify-content: center;
+  letter-spacing: 0.04em;
+  width: 44px;
+}
+
+.brand-eyebrow {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.brand-title {
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.app-user {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+}
+
+.user-meta {
+  text-align: right;
+}
+
+.user-meta-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.user-email {
+  color: var(--color-text);
+  font-weight: 600;
+  margin: 0;
+}

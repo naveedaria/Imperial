@@ -166,8 +166,32 @@ docker compose down -v
 
 ```text
 .
-├── backend/          # FastAPI app and Python dependencies
-├── frontend/         # React TypeScript app
+├── backend/
+│   ├── app/
+│   │   ├── main.py            # FastAPI app factory: middleware, lifespan, router includes
+│   │   ├── config.py          # Settings loaded from environment
+│   │   ├── logging_config.py  # Shared logger setup
+│   │   ├── database.py        # Async engine, SessionLocal, declarative Base
+│   │   ├── deps.py            # FastAPI deps: get_session, get_current_user
+│   │   ├── security.py        # Password hashing and string helpers (no FastAPI imports)
+│   │   ├── validation.py      # Request validators that raise HTTP 400
+│   │   ├── models.py          # SQLAlchemy ORM tables
+│   │   ├── schemas.py         # Pydantic request/response models
+│   │   ├── routes/            # APIRouter modules: health, auth, watchlist, prices
+│   │   └── services/          # Business logic / integrations (yfinance wrapper)
+│   └── scripts/
+│       └── seed.py            # Idempotent demo data seeder
+├── frontend/
+│   └── src/
+│       ├── main.tsx           # React mount only
+│       ├── App.tsx            # Top-level routing (logged-in vs logged-out)
+│       ├── types.ts           # Shared TypeScript types
+│       ├── api/               # Network boundary: client.ts + auth/watchlist/prices/health
+│       ├── auth/              # AuthPanel + useUser, useHealth hooks
+│       ├── dashboard/         # Dashboard, WatchlistPanel, PricePanel + useWatchlist, usePrices hooks
+│       ├── charts/            # PriceLineChart, Sparkline, chart utils
+│       ├── shared/            # Cross-cutting helpers (format, StatusPill)
+│       └── styles/            # Feature-scoped CSS imported via styles/index.css
 ├── docker-compose.yml
 ├── .env.example
 └── README.md

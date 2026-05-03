@@ -1,0 +1,30 @@
+@media (max-width: 960px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .watchlist-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 820px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .card,
+  .card-app {
+    padding: 1.5rem;
+  }
+
+  .price-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .price-hero-numbers,
+  .price-hero-actions {
+    text-align: left;
+    justify-content: flex-start;
+  }
+}

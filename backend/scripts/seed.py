@@ -1,8 +1,21 @@
+"""Idempotent demo data seeder.
+
+Creates (or refreshes) a handful of demo users with starter watchlists.
+Safe to re-run: existing users get their password reset, existing watchlist
+rows are left in place.
+"""
+
 import asyncio
 
 from sqlalchemy import select
 
-from app.main import Base, SessionLocal, User, WatchlistItem, engine, hash_password, logger, normalize_email, normalize_ticker
+from app.database import Base, SessionLocal, engine
+from app.logging_config import configure_logging, logger
+from app.models import User, WatchlistItem
+from app.security import hash_password, normalize_email, normalize_ticker
+
+
+configure_logging()
 
 
 DEMO_USERS = [
@@ -27,7 +40,10 @@ async def seed_users() -> None:
                 user = existing_user
                 logger.info("Updated demo user %s", email)
             else:
-                user = User(email=email, password_hash=hash_password(demo_user["password"]))
+                user = User(
+                    email=email,
+                    password_hash=hash_password(demo_user["password"]),
+                )
                 session.add(user)
                 await session.flush()
                 logger.info("Created demo user %s", email)
