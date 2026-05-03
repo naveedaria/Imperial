@@ -2,13 +2,13 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.main import Base, SessionLocal, User, engine, hash_password, logger, normalize_email
+from app.main import Base, SessionLocal, User, WatchlistItem, engine, hash_password, logger, normalize_email, normalize_ticker
 
 
 DEMO_USERS = [
-    {"email": "demo@example.com", "password": "password123"},
-    {"email": "alice@example.com", "password": "password123"},
-    {"email": "bob@example.com", "password": "password123"},
+    {"email": "demo@example.com", "password": "password123", "tickers": ["AAPL", "MSFT", "NVDA"]},
+    {"email": "alice@example.com", "password": "password123", "tickers": ["TSLA", "AMZN"]},
+    {"email": "bob@example.com", "password": "password123", "tickers": ["GOOG"]},
 ]
 
 
@@ -24,11 +24,27 @@ async def seed_users() -> None:
 
             if existing_user:
                 existing_user.password_hash = hash_password(demo_user["password"])
+                user = existing_user
                 logger.info("Updated demo user %s", email)
-                continue
+            else:
+                user = User(email=email, password_hash=hash_password(demo_user["password"]))
+                session.add(user)
+                await session.flush()
+                logger.info("Created demo user %s", email)
 
-            session.add(User(email=email, password_hash=hash_password(demo_user["password"])))
-            logger.info("Created demo user %s", email)
+            for ticker in demo_user["tickers"]:
+                normalized_ticker = normalize_ticker(ticker)
+                watchlist_result = await session.execute(
+                    select(WatchlistItem).where(
+                        WatchlistItem.user_id == user.id,
+                        WatchlistItem.ticker == normalized_ticker,
+                    )
+                )
+                if watchlist_result.scalar_one_or_none():
+                    continue
+
+                session.add(WatchlistItem(user_id=user.id, ticker=normalized_ticker))
+                logger.info("Added demo ticker %s for %s", normalized_ticker, email)
 
         await session.commit()
 

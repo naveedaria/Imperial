@@ -7,13 +7,15 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import DateTime, String, text, select
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.prices import PriceHistoryResponse, get_price_history
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -48,9 +50,23 @@ class User(Base):
     )
 
 
+class WatchlistItem(Base):
+    __tablename__ = "watchlist_items"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_watchlist_user_ticker"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class AuthRequest(BaseModel):
     email: str
     password: str
+
+
+class WatchlistCreateRequest(BaseModel):
+    ticker: str
 
 
 class UserResponse(BaseModel):
@@ -58,8 +74,18 @@ class UserResponse(BaseModel):
     email: str
 
 
+class WatchlistItemResponse(BaseModel):
+    id: str
+    ticker: str
+    created_at: datetime
+
+
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def normalize_ticker(ticker: str) -> str:
+    return ticker.strip().upper()
 
 
 def hash_password(password: str) -> str:
@@ -88,6 +114,29 @@ def validate_auth_request(payload: AuthRequest) -> str:
     if len(payload.password) < 8:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters.")
     return email
+
+
+def validate_ticker(ticker: str) -> str:
+    normalized = normalize_ticker(ticker)
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticker is required.")
+    if len(normalized) > 10 or not normalized.replace(".", "").replace("-", "").isalnum():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid ticker symbol.")
+    return normalized
+
+
+async def get_user_or_404(user_id: str) -> User:
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    return user
+
+
+def serialize_watchlist_item(item: WatchlistItem) -> WatchlistItemResponse:
+    return WatchlistItemResponse(id=item.id, ticker=item.ticker, created_at=item.created_at)
 
 
 @asynccontextmanager
@@ -171,3 +220,72 @@ async def login(payload: AuthRequest):
 
     logger.info("Logged in user %s", user.id)
     return UserResponse(id=user.id, email=user.email)
+
+
+@app.get("/watchlist", response_model=list[WatchlistItemResponse])
+async def list_watchlist(x_user_id: str = Header(..., alias="X-User-Id")):
+    await get_user_or_404(x_user_id)
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(WatchlistItem)
+            .where(WatchlistItem.user_id == x_user_id)
+            .order_by(WatchlistItem.created_at.asc(), WatchlistItem.ticker.asc())
+        )
+        items = result.scalars().all()
+
+    return [serialize_watchlist_item(item) for item in items]
+
+
+@app.post("/watchlist", response_model=WatchlistItemResponse, status_code=status.HTTP_201_CREATED)
+async def add_watchlist_item(payload: WatchlistCreateRequest, x_user_id: str = Header(..., alias="X-User-Id")):
+    await get_user_or_404(x_user_id)
+    ticker = validate_ticker(payload.ticker)
+
+    async with SessionLocal() as session:
+        count_result = await session.execute(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.user_id == x_user_id))
+        item_count = count_result.scalar_one()
+        if item_count >= 10:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Watchlist is limited to 10 tickers.")
+
+        item = WatchlistItem(user_id=x_user_id, ticker=ticker)
+        session.add(item)
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ticker is already on this watchlist.")
+        await session.refresh(item)
+
+    logger.info("Added ticker %s for user %s", ticker, x_user_id)
+    return serialize_watchlist_item(item)
+
+
+@app.delete("/watchlist/{ticker}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_watchlist_item(ticker: str, x_user_id: str = Header(..., alias="X-User-Id")):
+    await get_user_or_404(x_user_id)
+    normalized_ticker = validate_ticker(ticker)
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(WatchlistItem).where(
+                WatchlistItem.user_id == x_user_id,
+                WatchlistItem.ticker == normalized_ticker,
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticker is not on this watchlist.")
+
+        await session.delete(item)
+        await session.commit()
+
+    logger.info("Removed ticker %s for user %s", normalized_ticker, x_user_id)
+
+
+@app.get("/prices/{ticker}", response_model=PriceHistoryResponse)
+async def price_history(ticker: str):
+    normalized_ticker = validate_ticker(ticker)
+    logger.info("Fetching price history for %s", normalized_ticker)
+    response = await get_price_history(normalized_ticker)
+    return response
