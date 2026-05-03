@@ -30,7 +30,7 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | 1         | Dockerized skeleton with FastAPI, React, Postgres, and health checks | Complete    |
 | 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
 | 3         | Private watchlist CRUD with max-ten and duplicate validation         | Complete    |
-| 4         | `yfinance` price history endpoint and UI display states              | Backend done |
+| 4         | `yfinance` price history endpoint and UI display states              | Complete    |
 | 5         | Logging polish, consistent errors, and user experience pass          | Not started |
 | 6         | Focused tests and final manual verification                          | Not started |
 | 7         | Final README/WRITEUP for submission                                  | Not started |
@@ -390,14 +390,40 @@ Trade-offs:
 - In-memory cache will not be shared across replicas in production. Production notes should cover Redis or a managed cache.
 - 60 seconds is a deliberate compromise between freshness and call volume; production code could expose it as configuration.
 
-## Next Increment Plan: Price History UI
+### Increment 4 Frontend
 
-Planned frontend work:
+Completed:
 
-- Add a way to select or expand a watched ticker.
-- Fetch price history for the selected ticker.
-- Display loading, empty, error, and success states.
-- Use a simple table first; add charting only if time allows.
+- Watchlist rows are now selectable. Clicking a ticker selects it and reveals the price panel below the watchlist.
+- Added `PricePanel` component that fetches `GET /prices/{ticker}` with loading, empty, warning, and error states.
+- Added a small summary bar with latest close, latest timestamp, absolute change, and percent change.
+- Added a scrollable, sticky-header price table with the most recent 50 of returned points.
+- Removing a selected ticker clears the price panel.
+- Bumped TypeScript target/libs to ES2022 to use `Array.prototype.at`.
+
+Verification to run:
+
+```sh
+docker compose up --build
+docker compose exec backend python -m scripts.seed
+```
+
+Then in the browser at http://localhost:5173:
+
+1. Log in as `demo@example.com` / `password123`.
+2. Click `AAPL` (or any seeded ticker) to load price history.
+3. Click `Refresh` to confirm the cache works.
+4. Add a fake ticker like `ZZZZ123` to the watchlist, select it, and confirm the warning state renders without breaking the UI.
+
+## Next Increment Plan: Logging, Error Polish, Tests, Docs
+
+Planned work:
+
+- Tighten backend logging around watchlist add/remove and price warnings.
+- Make API error messages consistent across surfaces.
+- Add a small set of pytest tests for auth and watchlist privacy/rules.
+- Optional: light tests around the price service with yfinance mocked.
+- Final README and WRITEUP polish for submission.
 
 ## Risks And Watch Items
 

@@ -21,6 +21,23 @@ type WatchlistItem = {
   created_at: string;
 };
 
+type PricePoint = {
+  timestamp: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+};
+
+type PriceHistoryResponse = {
+  ticker: string;
+  interval: string;
+  period: string;
+  points: PricePoint[];
+  warning: string | null;
+};
+
 type AuthMode = "login" | "register";
 
 const storedUser = localStorage.getItem("imperial:user");
@@ -81,8 +98,8 @@ function App() {
         <p className="eyebrow">Imperial Capital Take-Home</p>
         <h1>Stock Watchlist</h1>
         <p className="lede">
-          Increment 3 adds private watchlists using the locally stored user as the
-          owner reference. Add up to ten tickers and remove them as needed.
+          Manage your private watchlist of up to ten tickers and view the last seven
+          days of 5-minute price history for any ticker on it.
         </p>
 
         <div className="status-grid">
@@ -240,6 +257,7 @@ function Dashboard({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
 
   const loadWatchlist = useCallback(() => {
     setIsLoading(true);
@@ -299,6 +317,7 @@ function Dashboard({
 
       setWatchlist((current) => current.filter((item) => item.ticker !== nextTicker));
       setMessage(`Removed ${nextTicker}.`);
+      setSelectedTicker((current) => (current === nextTicker ? null : current));
     } catch (removeError: unknown) {
       const errorMessage = removeError instanceof Error ? removeError.message : "Could not remove ticker.";
       setError(errorMessage);
@@ -356,8 +375,16 @@ function Dashboard({
         ) : (
           <ul className="ticker-list">
             {watchlist.map((item) => (
-              <li key={item.id}>
-                <strong>{item.ticker}</strong>
+              <li key={item.id} className={selectedTicker === item.ticker ? "selected" : undefined}>
+                <button
+                  className="ticker-select"
+                  type="button"
+                  onClick={() => setSelectedTicker(item.ticker)}
+                  aria-pressed={selectedTicker === item.ticker}
+                >
+                  <strong>{item.ticker}</strong>
+                  <span className="muted">View prices</span>
+                </button>
                 <button className="secondary" type="button" onClick={() => handleRemoveTicker(item.ticker)}>
                   Remove
                 </button>
@@ -366,6 +393,16 @@ function Dashboard({
           </ul>
         )}
       </section>
+
+      {selectedTicker ? (
+        <PricePanel
+          key={selectedTicker}
+          ticker={selectedTicker}
+          onClose={() => setSelectedTicker(null)}
+        />
+      ) : watchlist.length > 0 ? (
+        <p className="empty-state">Select a ticker to view its 7-day, 5-minute price history.</p>
+      ) : null}
 
       <div className="actions">
         <button type="button" onClick={onRecheck}>
@@ -377,6 +414,154 @@ function Dashboard({
       </div>
     </div>
   );
+}
+
+function PricePanel({ ticker, onClose }: { ticker: string; onClose: () => void }) {
+  const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadPrices = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    fetch(`${apiBaseUrl}/prices/${encodeURIComponent(ticker)}`)
+      .then((response) => parseApiResponse<PriceHistoryResponse>(response))
+      .then(setHistory)
+      .catch((loadError: unknown) => {
+        const message = loadError instanceof Error ? loadError.message : "Could not load price history.";
+        setError(message);
+      })
+      .finally(() => setIsLoading(false));
+  }, [ticker]);
+
+  useEffect(() => {
+    loadPrices();
+  }, [loadPrices]);
+
+  const recent = history?.points.slice(-50).reverse() ?? [];
+  const latest = history?.points.at(-1) ?? null;
+  const earliest = history?.points.at(0) ?? null;
+  const change =
+    latest && earliest && latest.close != null && earliest.close != null
+      ? latest.close - earliest.close
+      : null;
+  const changePct =
+    change != null && earliest?.close ? (change / earliest.close) * 100 : null;
+
+  return (
+    <section className="price-panel">
+      <div className="price-header">
+        <div>
+          <p className="eyebrow">Price history</p>
+          <h3>{ticker}</h3>
+          {history ? (
+            <p className="muted">
+              {history.period} at {history.interval} - {history.points.length} points
+            </p>
+          ) : null}
+        </div>
+        <div className="actions">
+          <button className="secondary" type="button" onClick={loadPrices} disabled={isLoading}>
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </button>
+          <button className="secondary" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+
+      {error ? <p className="error">{error}</p> : null}
+      {history?.warning ? <p className="warning">{history.warning}</p> : null}
+
+      {isLoading && !history ? (
+        <p className="muted">Loading price history...</p>
+      ) : history && history.points.length > 0 ? (
+        <>
+          <div className="price-summary">
+            <SummaryStat label="Latest close" value={formatPrice(latest?.close)} />
+            <SummaryStat label="Latest time" value={formatTimestamp(latest?.timestamp)} />
+            <SummaryStat
+              label="Change"
+              value={change != null ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}` : "-"}
+              tone={change != null ? (change >= 0 ? "positive" : "negative") : undefined}
+            />
+            <SummaryStat
+              label="Change %"
+              value={changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "-"}
+              tone={changePct != null ? (changePct >= 0 ? "positive" : "negative") : undefined}
+            />
+          </div>
+
+          <div className="price-table-scroll">
+            <table className="price-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Open</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>Close</th>
+                  <th>Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((point) => (
+                  <tr key={point.timestamp}>
+                    <td>{formatTimestamp(point.timestamp)}</td>
+                    <td>{formatPrice(point.open)}</td>
+                    <td>{formatPrice(point.high)}</td>
+                    <td>{formatPrice(point.low)}</td>
+                    <td>{formatPrice(point.close)}</td>
+                    <td>{point.volume?.toLocaleString() ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {history.points.length > recent.length ? (
+            <p className="muted">Showing most recent {recent.length} of {history.points.length} points.</p>
+          ) : null}
+        </>
+      ) : !error ? (
+        <p className="empty-state">No price points to display.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div className={`summary-stat${tone ? ` summary-${tone}` : ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function formatPrice(value: number | null | undefined): string {
+  if (value == null) {
+    return "-";
+  }
+  return value.toFixed(2);
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
 }
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
