@@ -1,3 +1,10 @@
+"""yfinance integration with TTL caching and defensive error handling.
+
+This module never raises into FastAPI. Failures and empty payloads return a
+``PriceHistoryResponse`` with a ``warning`` field so callers can render a clean
+state instead of a 500.
+"""
+
 import asyncio
 import logging
 import time
@@ -40,6 +47,25 @@ class _CacheEntry:
 
 _cache: dict[str, _CacheEntry] = {}
 _cache_lock = asyncio.Lock()
+
+
+def _clean_float(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        as_float = float(value)
+    except (TypeError, ValueError):
+        return None
+    if as_float != as_float:  # NaN check without importing math.
+        return None
+    return as_float
+
+
+def _clean_int(value) -> Optional[int]:
+    cleaned = _clean_float(value)
+    if cleaned is None:
+        return None
+    return int(cleaned)
 
 
 def _fetch_history_sync(ticker: str) -> PriceHistoryResponse:
@@ -88,25 +114,6 @@ def _fetch_history_sync(ticker: str) -> PriceHistoryResponse:
 
     response.points = points
     return response
-
-
-def _clean_float(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        as_float = float(value)
-    except (TypeError, ValueError):
-        return None
-    if as_float != as_float:  # NaN check without importing math.
-        return None
-    return as_float
-
-
-def _clean_int(value) -> Optional[int]:
-    cleaned = _clean_float(value)
-    if cleaned is None:
-        return None
-    return int(cleaned)
 
 
 async def get_price_history(ticker: str) -> PriceHistoryResponse:

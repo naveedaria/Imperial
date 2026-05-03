@@ -31,7 +31,7 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
 | 3         | Private watchlist CRUD with max-ten and duplicate validation         | Complete    |
 | 4         | `yfinance` price history endpoint and UI display states              | Complete    |
-| 5         | Logging polish, consistent errors, and user experience pass          | Not started |
+| 5         | UI polish, line chart, sparklines, and finance-app design pass        | Complete    |
 | 6         | Focused tests and final manual verification                          | Not started |
 | 7         | Final README/WRITEUP for submission                                  | Not started |
 
@@ -415,7 +415,115 @@ Then in the browser at http://localhost:5173:
 3. Click `Refresh` to confirm the cache works.
 4. Add a fake ticker like `ZZZZ123` to the watchlist, select it, and confirm the warning state renders without breaking the UI.
 
-## Next Increment Plan: Logging, Error Polish, Tests, Docs
+## Increment 5 Progress Check (UI Polish)
+
+Goal: turn the dashboard into something that reads as a simple finance app, with a line chart instead of bars and consistent design.
+
+Completed:
+
+- Replaced the bar chart with `PriceLineChart`: a stroked line plus gradient-filled area, tone-driven color (green, red, gray), latest-point dot, and unobtrusive grid and axis labels.
+- Added `Sparkline` for inline mini-charts on each watchlist row.
+- Restructured the `PricePanel` into a finance-app hero header: ticker symbol, large price, signed absolute and percent change, "as of" timestamp, refresh and close actions.
+- Replaced the four-tile change summary with a per-period `Open / High / Low / Close / Volume` stat strip drawn from the latest point.
+- Moved the recent prints table behind a collapsible `<details>` to keep the chart and stats above the fold.
+- Reorganized the app shell. When a user is logged in, the page now shows a brand header (`Imperial Capital - Watchlist`) with signed-in email, log-out button, and a compact health status strip. The marketing hero remains for the logged-out auth view.
+- Standardized design tokens via CSS variables: surface colors, borders, text shades, up/down/flat tones, radii, and shadows. Buttons now have a clear primary, `secondary`, and `ghost` variant.
+- Tabular numerics across price displays for easier visual comparison.
+- Improved selected-row treatment, sparkline alignment, and responsive layout below 820px.
+
+Trade-offs:
+
+- Pure SVG chart with no charting library. Easy to read and explain, but lacks interactive crosshair, axes, or zooming.
+- Recent prints are hidden by default. A reviewer who wants the raw rows still has them, but they no longer dominate the screen.
+- The sparkline samples roughly every Nth point to stay snappy. Production would render the full series via a charting library or memoized canvas.
+
+Verification to run:
+
+```sh
+docker compose up --build
+docker compose exec backend python -m scripts.seed
+```
+
+Then in the browser at http://localhost:5173:
+
+1. Log in as `demo@example.com` / `password123`.
+2. Confirm the brand header, status strip, and inline sparklines render.
+3. Click `AAPL` (or another seeded ticker) and confirm the hero price, signed change, line + area chart, OHLCV stat row, and collapsible recent-prints table.
+4. Click `Refresh prices` to confirm the parallel reload still works.
+5. Add an unknown ticker like `ZZZZ123`, select it, and confirm the warning state renders cleanly with no hero crash.
+
+## Modularity Refactor (post-Increment 5)
+
+Goal: split the two monolith files (`backend/app/main.py` at ~300 lines and
+`frontend/src/main.tsx` at ~933 lines) into feature-scoped modules so each
+file has a single, obvious responsibility.
+
+### Backend changes
+
+- `app/main.py` shrank from 300 to 68 lines. It is now an app factory that
+  configures middleware, lifespan, and router includes only.
+- New modules:
+  - `app/config.py` — typed `Settings` loaded from env.
+  - `app/logging_config.py` — shared logger and `configure_logging()`.
+  - `app/database.py` — async engine, `SessionLocal`, declarative `Base`.
+  - `app/security.py` — password hashing and string normalisation (pure
+    helpers with no FastAPI imports, easy to unit test).
+  - `app/validation.py` — request validators that raise HTTP 400.
+  - `app/models.py` — `User` and `WatchlistItem` ORM tables.
+  - `app/schemas.py` — Pydantic request/response models.
+  - `app/deps.py` — shared `get_session` and `get_current_user` deps.
+  - `app/routes/{health,auth,watchlist,prices}.py` — APIRouter per concern.
+  - `app/services/prices.py` — moved from `app/prices.py`. Same logic.
+- `get_current_user` replaces the duplicated `get_user_or_404` calls. Routes
+  declare `user: User = Depends(get_current_user)` and never have to look up
+  the row themselves.
+- Routes also use a shared `session: AsyncSession = Depends(get_session)`
+  instead of opening their own `async with SessionLocal()` blocks.
+- `backend/scripts/seed.py` no longer imports from `app.main`. It pulls
+  helpers directly from `database`, `models`, `security`, `logging_config`.
+
+### Frontend changes
+
+- `src/main.tsx` shrank from 933 to 10 lines (just the React mount). All
+  app logic moved to `src/App.tsx`.
+- New folders:
+  - `src/api/` — `client.ts`, `auth.ts`, `watchlist.ts`, `prices.ts`,
+    `health.ts`. All `fetch` calls live here behind named functions.
+  - `src/auth/` — `AuthPanel.tsx`, `useUser.ts`, `useHealth.ts`.
+  - `src/dashboard/` — `Dashboard.tsx`, `WatchlistPanel.tsx`,
+    `PricePanel.tsx`, plus `useWatchlist`/`usePrices` hooks.
+  - `src/charts/` — `PriceLineChart.tsx`, `Sparkline.tsx`, `chartUtils.ts`.
+  - `src/shared/` — `format.ts`, `StatusPill.tsx`.
+  - `src/styles/` — `tokens.css`, `base.css`, `layout.css`, `header.css`,
+    `status.css`, `feedback.css`, `auth.css`, `dashboard.css`,
+    `watchlist.css`, `price-panel.css`, `responsive.css`, all imported via
+    `styles/index.css`.
+- `useWatchlist(userId)` owns list/add/remove/state. `usePrices(tickers)`
+  owns the price-history cache and refresh actions. `Dashboard` becomes a
+  ~50-line composition: it instantiates the two hooks, memoizes the ticker
+  array, and routes the active selection to either the empty state or the
+  `PricePanel`.
+
+### Verification
+
+- `python3 -c "ast.parse"` over every backend file succeeds.
+- `npx tsc --noEmit` passes.
+- `npm run build` produces a working production bundle (`vite build`,
+  47 modules, ~211 KB JS pre-gzip).
+- No behaviour changes intended; routes, payloads, and UI all match.
+
+### Trade-offs
+
+- Pulled `models.py` and `schemas.py` into single files rather than
+  per-domain folders. Both are small (~40 lines) and it's easy to promote
+  to folders later when domains grow.
+- Kept the in-memory price cache inside `services/prices.py`. A real cache
+  would be Redis or similar, but the current TTL dict works at this scale.
+- `usePrices` watches the `tickers` array reference; `Dashboard` memoizes
+  it via `useMemo` over `watchlist.items`. Without that, the hook would
+  re-fetch on every render.
+
+## Next Increment Plan: Logging, Tests, Final Docs
 
 Planned work:
 

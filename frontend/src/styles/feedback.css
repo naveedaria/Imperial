@@ -1,0 +1,22 @@
+.error,
+.success,
+.warning {
+  border-radius: var(--radius-sm);
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+
+.error {
+  background: #fee2e2;
+  color: var(--color-down-strong);
+}
+
+.success {
+  background: #dcfce7;
+  color: var(--color-up-strong);
+}
+
+.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
