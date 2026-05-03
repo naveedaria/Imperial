@@ -1,199 +1,36 @@
 # Imperial Watchlist
 
-Full-stack take-home app scaffold using FastAPI, Postgres, React TypeScript, and Docker.
-
-## Current Increment
-
-Increment 1 creates a runnable local skeleton:
-
-- FastAPI backend with `GET /health`
-- Postgres container with persistent Docker volume
-- React TypeScript frontend that checks backend and database health
-- Docker Compose orchestration
-- Basic backend request and startup logging
+Full-stack take-home app: register, log in, manage a private watchlist of up
+to ten stock tickers, and view the last seven days of 5-minute price history
+for each. Built with FastAPI, Postgres, React TypeScript, and orchestrated
+with Docker Compose.
 
 ## Prerequisites
 
-- Docker Desktop
-- Docker Compose v2
+- Docker Desktop (or Docker Engine) running
+- Docker Compose v2 (bundled with current Docker Desktop releases)
 
-## Run Locally
+That's it. You do not need Python, Node.js, or Postgres installed locally.
 
-Copy the example environment file:
+## Quick Start
+
+From the project root:
 
 ```sh
 cp .env.example .env
-```
-
-Build and start the app:
-
-```sh
 docker compose up --build
 ```
 
-Then open:
+The first build takes a minute or two. When it's ready, open:
 
-- Frontend: [http://localhost:5173](http://localhost:5173)
-- Backend health check: [http://localhost:8000/health](http://localhost:8000/health)
+- Frontend: <http://localhost:5173>
+- Backend: <http://localhost:8000>
+- API docs (Swagger UI): <http://localhost:8000/docs>
+- Backend health: <http://localhost:8000/health>
 
-## Verification Commands
-
-In another terminal, check the backend health response:
-
-```sh
-curl http://localhost:8000/health
-```
-
-Expected response:
-
-```json
-{"status":"ok","database":"ok"}
-```
-
-Check that all containers are running:
+To stop:
 
 ```sh
-docker compose ps
+docker compose down          # stop containers, keep Postgres data
+docker compose down -v       # stop and wipe Postgres data volume
 ```
-
-## Seed Demo Data
-
-With the app running, create or refresh demo users:
-
-```sh
-docker compose exec backend python -m scripts.seed
-```
-
-The seed script is idempotent. It creates these users if missing and resets their passwords if they already exist:
-
-```text
-demo@example.com  / password123 / AAPL, MSFT, NVDA
-alice@example.com / password123 / TSLA, AMZN
-bob@example.com   / password123 / GOOG
-```
-
-Test a seeded login from the command line:
-
-```sh
-curl -X POST http://localhost:8000/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"demo@example.com","password":"password123"}'
-```
-
-Expected response shape:
-
-```json
-{"id":"<user-id>","email":"demo@example.com"}
-```
-
-You can also open [http://localhost:5173](http://localhost:5173) and log in with one of the seeded accounts.
-
-## Watchlist API
-
-Watchlist requests use the locally stored user ID as a lightweight owner reference. Pass it with `X-User-Id`.
-
-List a user's watchlist:
-
-```sh
-curl http://localhost:8000/watchlist \
-  -H 'X-User-Id: <user-id>'
-```
-
-Add a ticker:
-
-```sh
-curl -X POST http://localhost:8000/watchlist \
-  -H 'Content-Type: application/json' \
-  -H 'X-User-Id: <user-id>' \
-  -d '{"ticker":"AAPL"}'
-```
-
-Remove a ticker:
-
-```sh
-curl -X DELETE http://localhost:8000/watchlist/AAPL \
-  -H 'X-User-Id: <user-id>'
-```
-
-## Price History API
-
-Price history uses `yfinance` and returns the last 7 days at 5-minute granularity. Empty or upstream errors return an empty `points` array and a `warning` string instead of a 500.
-
-```sh
-curl http://localhost:8000/prices/AAPL
-```
-
-Response shape:
-
-```json
-{
-  "ticker": "AAPL",
-  "interval": "5m",
-  "period": "7d",
-  "points": [
-    {
-      "timestamp": "2026-04-23T09:30:00-04:00",
-      "open": 275.04,
-      "high": 275.67,
-      "low": 274.15,
-      "close": 275.08,
-      "volume": 2310046
-    }
-  ],
-  "warning": null
-}
-```
-
-If yfinance has no data:
-
-```json
-{"ticker":"FAKE","interval":"5m","period":"7d","points":[],"warning":"No recent price data is available for this ticker."}
-```
-
-Stop the app:
-
-```sh
-docker compose down
-```
-
-Stop the app and remove the Postgres data volume:
-
-```sh
-docker compose down -v
-```
-
-## Folder Structure
-
-```text
-.
-├── backend/
-│   ├── app/
-│   │   ├── main.py            # FastAPI app factory: middleware, lifespan, router includes
-│   │   ├── config.py          # Settings loaded from environment
-│   │   ├── logging_config.py  # Shared logger setup
-│   │   ├── database.py        # Async engine, SessionLocal, declarative Base
-│   │   ├── deps.py            # FastAPI deps: get_session, get_current_user
-│   │   ├── security.py        # Password hashing and string helpers (no FastAPI imports)
-│   │   ├── validation.py      # Request validators that raise HTTP 400
-│   │   ├── models.py          # SQLAlchemy ORM tables
-│   │   ├── schemas.py         # Pydantic request/response models
-│   │   ├── routes/            # APIRouter modules: health, auth, watchlist, prices
-│   │   └── services/          # Business logic / integrations (yfinance wrapper)
-│   └── scripts/
-│       └── seed.py            # Idempotent demo data seeder
-├── frontend/
-│   └── src/
-│       ├── main.tsx           # React mount only
-│       ├── App.tsx            # Top-level routing (logged-in vs logged-out)
-│       ├── types.ts           # Shared TypeScript types
-│       ├── api/               # Network boundary: client.ts + auth/watchlist/prices/health
-│       ├── auth/              # AuthPanel + useUser, useHealth hooks
-│       ├── dashboard/         # Dashboard, WatchlistPanel, PricePanel + useWatchlist, usePrices hooks
-│       ├── charts/            # PriceLineChart, Sparkline, chart utils
-│       ├── shared/            # Cross-cutting helpers (format, StatusPill)
-│       └── styles/            # Feature-scoped CSS imported via styles/index.css
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
