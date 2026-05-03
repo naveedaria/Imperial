@@ -31,7 +31,7 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
 | 3         | Private watchlist CRUD with max-ten and duplicate validation         | Complete    |
 | 4         | `yfinance` price history endpoint and UI display states              | Complete    |
-| 5         | Logging polish, consistent errors, and user experience pass          | Not started |
+| 5         | UI polish, line chart, sparklines, and finance-app design pass        | Complete    |
 | 6         | Focused tests and final manual verification                          | Not started |
 | 7         | Final README/WRITEUP for submission                                  | Not started |
 
@@ -415,7 +415,44 @@ Then in the browser at http://localhost:5173:
 3. Click `Refresh` to confirm the cache works.
 4. Add a fake ticker like `ZZZZ123` to the watchlist, select it, and confirm the warning state renders without breaking the UI.
 
-## Next Increment Plan: Logging, Error Polish, Tests, Docs
+## Increment 5 Progress Check (UI Polish)
+
+Goal: turn the dashboard into something that reads as a simple finance app, with a line chart instead of bars and consistent design.
+
+Completed:
+
+- Replaced the bar chart with `PriceLineChart`: a stroked line plus gradient-filled area, tone-driven color (green, red, gray), latest-point dot, and unobtrusive grid and axis labels.
+- Added `Sparkline` for inline mini-charts on each watchlist row.
+- Restructured the `PricePanel` into a finance-app hero header: ticker symbol, large price, signed absolute and percent change, "as of" timestamp, refresh and close actions.
+- Replaced the four-tile change summary with a per-period `Open / High / Low / Close / Volume` stat strip drawn from the latest point.
+- Moved the recent prints table behind a collapsible `<details>` to keep the chart and stats above the fold.
+- Reorganized the app shell. When a user is logged in, the page now shows a brand header (`Imperial Capital - Watchlist`) with signed-in email, log-out button, and a compact health status strip. The marketing hero remains for the logged-out auth view.
+- Standardized design tokens via CSS variables: surface colors, borders, text shades, up/down/flat tones, radii, and shadows. Buttons now have a clear primary, `secondary`, and `ghost` variant.
+- Tabular numerics across price displays for easier visual comparison.
+- Improved selected-row treatment, sparkline alignment, and responsive layout below 820px.
+
+Trade-offs:
+
+- Pure SVG chart with no charting library. Easy to read and explain, but lacks interactive crosshair, axes, or zooming.
+- Recent prints are hidden by default. A reviewer who wants the raw rows still has them, but they no longer dominate the screen.
+- The sparkline samples roughly every Nth point to stay snappy. Production would render the full series via a charting library or memoized canvas.
+
+Verification to run:
+
+```sh
+docker compose up --build
+docker compose exec backend python -m scripts.seed
+```
+
+Then in the browser at http://localhost:5173:
+
+1. Log in as `demo@example.com` / `password123`.
+2. Confirm the brand header, status strip, and inline sparklines render.
+3. Click `AAPL` (or another seeded ticker) and confirm the hero price, signed change, line + area chart, OHLCV stat row, and collapsible recent-prints table.
+4. Click `Refresh prices` to confirm the parallel reload still works.
+5. Add an unknown ticker like `ZZZZ123`, select it, and confirm the warning state renders cleanly with no hero crash.
+
+## Next Increment Plan: Logging, Tests, Final Docs
 
 Planned work:
 

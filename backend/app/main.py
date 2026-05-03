@@ -248,6 +248,15 @@ async def add_watchlist_item(payload: WatchlistCreateRequest, x_user_id: str = H
         if item_count >= 10:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Watchlist is limited to 10 tickers.")
 
+    price_response = await get_price_history(ticker)
+    if not price_response.points:
+        logger.info("Rejected unknown ticker %s for user %s", ticker, x_user_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{ticker} is not a recognized ticker symbol. Please double-check and try again.",
+        )
+
+    async with SessionLocal() as session:
         item = WatchlistItem(user_id=x_user_id, ticker=ticker)
         session.add(item)
         try:
