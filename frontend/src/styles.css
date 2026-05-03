@@ -134,11 +134,17 @@ h1 {
   color: #b91c1c;
 }
 
-.error {
+.error,
+.success {
   background: #fee2e2;
   border-radius: 12px;
   margin: 0 0 1rem;
   padding: 0.85rem 1rem;
+}
+
+.success {
+  background: #dcfce7;
+  color: #047857;
 }
 
 .auth-layout {
@@ -196,6 +202,67 @@ h1 {
   gap: 1.25rem;
 }
 
+.watchlist-panel {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.watchlist-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.watchlist-header h3 {
+  margin: 0;
+}
+
+.ticker-form {
+  align-items: end;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ticker-form label {
+  color: #334155;
+  display: grid;
+  font-weight: 700;
+  gap: 0.4rem;
+}
+
+.ticker-list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ticker-list li {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.empty-state {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: #64748b;
+  margin: 0;
+  padding: 1rem;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -214,5 +281,9 @@ h1 {
 
   .card {
     padding: 2rem;
+  }
+
+  .ticker-form {
+    grid-template-columns: 1fr;
   }
 }

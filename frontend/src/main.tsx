@@ -15,6 +15,12 @@ type User = {
   email: string;
 };
 
+type WatchlistItem = {
+  id: string;
+  ticker: string;
+  created_at: string;
+};
+
 type AuthMode = "login" | "register";
 
 const storedUser = localStorage.getItem("imperial:user");
@@ -75,9 +81,8 @@ function App() {
         <p className="eyebrow">Imperial Capital Take-Home</p>
         <h1>Stock Watchlist</h1>
         <p className="lede">
-          Increment 2 adds intentionally lightweight login and registration. The
-          frontend stores the returned user locally so later watchlist calls can be
-          scoped to that user.
+          Increment 3 adds private watchlists using the locally stored user as the
+          owner reference. Add up to ten tickers and remove them as needed.
         </p>
 
         <div className="status-grid">
@@ -229,6 +234,77 @@ function Dashboard({
   onLogout: () => void;
   onRecheck: () => void;
 }) {
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [ticker, setTicker] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadWatchlist = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    fetch(`${apiBaseUrl}/watchlist`, {
+      headers: { "X-User-Id": user.id },
+    })
+      .then((response) => parseApiResponse<WatchlistItem[]>(response))
+      .then(setWatchlist)
+      .catch((loadError: unknown) => {
+        const errorMessage = loadError instanceof Error ? loadError.message : "Could not load watchlist.";
+        setError(errorMessage);
+      })
+      .finally(() => setIsLoading(false));
+  }, [user.id]);
+
+  useEffect(() => {
+    loadWatchlist();
+  }, [loadWatchlist]);
+
+  async function handleAddTicker(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const item = await fetch(`${apiBaseUrl}/watchlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": user.id,
+        },
+        body: JSON.stringify({ ticker }),
+      }).then((response) => parseApiResponse<WatchlistItem>(response));
+
+      setWatchlist((current) => [...current, item]);
+      setTicker("");
+      setMessage(`Added ${item.ticker}.`);
+    } catch (addError: unknown) {
+      const errorMessage = addError instanceof Error ? addError.message : "Could not add ticker.";
+      setError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleRemoveTicker(nextTicker: string) {
+    setError(null);
+    setMessage(null);
+
+    try {
+      await fetch(`${apiBaseUrl}/watchlist/${encodeURIComponent(nextTicker)}`, {
+        method: "DELETE",
+        headers: { "X-User-Id": user.id },
+      }).then((response) => parseApiResponse<void>(response));
+
+      setWatchlist((current) => current.filter((item) => item.ticker !== nextTicker));
+      setMessage(`Removed ${nextTicker}.`);
+    } catch (removeError: unknown) {
+      const errorMessage = removeError instanceof Error ? removeError.message : "Could not remove ticker.";
+      setError(errorMessage);
+    }
+  }
+
   return (
     <div className="dashboard">
       <div>
@@ -238,10 +314,59 @@ function Dashboard({
           User ID: <code>{user.id}</code>
         </p>
         <p className="muted">
-          Watchlist management comes next. API calls will use this stored user ID as
-          the lightweight owner reference.
+          This take-home uses your stored user ID as the lightweight owner reference.
         </p>
       </div>
+
+      <section className="watchlist-panel">
+        <div className="watchlist-header">
+          <div>
+            <h3>Watchlist</h3>
+            <p className="muted">{watchlist.length}/10 tickers</p>
+          </div>
+          <button className="secondary" type="button" onClick={loadWatchlist}>
+            Refresh
+          </button>
+        </div>
+
+        <form className="ticker-form" onSubmit={handleAddTicker}>
+          <label>
+            Ticker
+            <input
+              maxLength={10}
+              onChange={(event) => setTicker(event.target.value.toUpperCase())}
+              placeholder="AAPL"
+              required
+              type="text"
+              value={ticker}
+            />
+          </label>
+          <button type="submit" disabled={isSubmitting || watchlist.length >= 10}>
+            {isSubmitting ? "Adding..." : "Add ticker"}
+          </button>
+        </form>
+
+        {message ? <p className="success">{message}</p> : null}
+        {error ? <p className="error">{error}</p> : null}
+
+        {isLoading ? (
+          <p className="muted">Loading watchlist...</p>
+        ) : watchlist.length === 0 ? (
+          <p className="empty-state">No tickers yet. Add one to start your watchlist.</p>
+        ) : (
+          <ul className="ticker-list">
+            {watchlist.map((item) => (
+              <li key={item.id}>
+                <strong>{item.ticker}</strong>
+                <button className="secondary" type="button" onClick={() => handleRemoveTicker(item.ticker)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <div className="actions">
         <button type="button" onClick={onRecheck}>
           Recheck services
@@ -252,6 +377,18 @@ function Dashboard({
       </div>
     </div>
   );
+}
+
+async function parseApiResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.detail ?? "Request failed.");
+  }
+  return data as T;
 }
 
 createRoot(document.getElementById("root")!).render(

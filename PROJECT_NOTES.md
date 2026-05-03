@@ -29,8 +29,8 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | --------- | -------------------------------------------------------------------- | ----------- |
 | 1         | Dockerized skeleton with FastAPI, React, Postgres, and health checks | Complete    |
 | 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
-| 3         | Private watchlist CRUD with max-ten and duplicate validation         | Not started |
-| 4         | `yfinance` price history endpoint and UI display states              | Not started |
+| 3         | Private watchlist CRUD with max-ten and duplicate validation         | Complete    |
+| 4         | `yfinance` price history endpoint and UI display states              | Backend done |
 | 5         | Logging polish, consistent errors, and user experience pass          | Not started |
 | 6         | Focused tests and final manual verification                          | Not started |
 | 7         | Final README/WRITEUP for submission                                  | Not started |
@@ -285,24 +285,119 @@ curl -X POST http://localhost:8000/auth/login \
   -d '{"email":"test@example.com","password":"password123"}'
 ```
 
-## Next Increment Plan: Watchlist CRUD
+## Increment 3 Progress Check
 
 Goal: authenticated-by-convention users can manage private watchlists by sending the locally stored user ID with each watchlist request.
 
-Planned backend work:
+Completed:
 
-- Add `watchlist_items` table with `id`, `user_id`, `ticker`, and `created_at`.
-- Add foreign key from `watchlist_items.user_id` to `users.id`.
-- Add unique constraint on `(user_id, ticker)`.
-- Add `GET /watchlist`, `POST /watchlist`, and `DELETE /watchlist/{ticker}`.
-- Use a simple `X-User-Id` header to identify the current user.
-- Enforce max ten tickers per user on the backend.
+- Added `watchlist_items` table with:
+  - `id`
+  - `user_id`
+  - `ticker`
+  - `created_at`
+- Added foreign key from `watchlist_items.user_id` to `users.id`.
+- Added unique constraint on `(user_id, ticker)`.
+- Added backend endpoints:
+  - `GET /watchlist`
+  - `POST /watchlist`
+  - `DELETE /watchlist/{ticker}`
+- Added `X-User-Id` header convention for lightweight ownership.
+- Enforced max ten tickers per user on the backend.
+- Normalized tickers to uppercase.
+- Added dashboard watchlist panel.
+- Added frontend add/remove/refresh flows.
+- Extended seed data with starter watchlists.
+
+Database table:
+
+```text
+watchlist_items
+- id string primary key
+- user_id string foreign key users.id
+- ticker string not null
+- created_at timestamp
+- unique(user_id, ticker)
+```
+
+Verification to run:
+
+```sh
+docker compose up --build
+docker compose exec backend python -m scripts.seed
+curl -X POST http://localhost:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@example.com","password":"password123"}'
+curl http://localhost:8000/watchlist \
+  -H 'X-User-Id: <user-id-from-login>'
+curl -X POST http://localhost:8000/watchlist \
+  -H 'Content-Type: application/json' \
+  -H 'X-User-Id: <user-id-from-login>' \
+  -d '{"ticker":"META"}'
+curl -X DELETE http://localhost:8000/watchlist/META \
+  -H 'X-User-Id: <user-id-from-login>'
+```
+
+## Increment 4 Progress Check (Backend)
+
+Goal: expose price history through `yfinance` while handling empty or failed upstream data gracefully.
+
+Completed:
+
+- Added `yfinance==1.3.0` to backend dependencies.
+- Added `backend/app/prices.py` with:
+  - Synchronous yfinance call wrapped in `asyncio.to_thread`.
+  - 7-day, 5-minute-interval history.
+  - Stable response shape with `ticker`, `interval`, `period`, `points`, `warning`.
+  - Defensive cleaning of NaN, None, and non-numeric values.
+  - Short-lived in-memory cache with 60-second TTL keyed by uppercase ticker.
+  - All exceptions caught and surfaced as a `warning` instead of a 500.
+- Added endpoint `GET /prices/{ticker}` that reuses ticker validation from the watchlist code path.
+
+Verified:
+
+- Live yfinance call against `AAPL` and `MSFT` returned 546 points each (7 days x 78 5-minute bars).
+- Live yfinance call against `NOT_A_REAL_TICKER_ZZZZ` returned `points: []` with a clear warning instead of an error.
+
+### Engineering Decisions
+
+Decision: keep yfinance access behind an internal `prices.py` module rather than scattering it across handlers.
+
+Reasoning:
+
+- Easier to swap providers later if yfinance becomes unreliable.
+- One place to centralize caching and error handling.
+- The handler stays trivially small and focused on validation and logging.
+
+Decision: never raise on yfinance failures. Always return a 200 response with an empty `points` array and a `warning` string.
+
+Reasoning:
+
+- The frontend can render a clean empty state without special-casing 4xx/5xx responses.
+- Upstream flakiness should not look like a backend bug.
+- Logs still capture the underlying exception via `logger.exception`.
+
+Decision: cache successful responses for 60 seconds in memory, do not cache warnings.
+
+Reasoning:
+
+- Avoids hammering yfinance during repeated UI refreshes.
+- Failures should be retried quickly so transient yfinance issues recover on their own.
+- In-memory cache is simple and disappears on restart, which is acceptable for this take-home.
+
+Trade-offs:
+
+- In-memory cache will not be shared across replicas in production. Production notes should cover Redis or a managed cache.
+- 60 seconds is a deliberate compromise between freshness and call volume; production code could expose it as configuration.
+
+## Next Increment Plan: Price History UI
 
 Planned frontend work:
 
-- Add dashboard watchlist panel.
-- Send stored `user.id` as `X-User-Id`.
-- Add/remove tickers with clear errors for duplicates, invalid input, and max-ten.
+- Add a way to select or expand a watched ticker.
+- Fetch price history for the selected ticker.
+- Display loading, empty, error, and success states.
+- Use a simple table first; add charting only if time allows.
 
 ## Risks And Watch Items
 
