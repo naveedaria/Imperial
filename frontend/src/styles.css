@@ -29,6 +29,34 @@ button:hover {
   background: #1e40af;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+input {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  color: #172033;
+  font: inherit;
+  padding: 0.8rem 0.9rem;
+  width: 100%;
+}
+
+input:focus {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgb(29 78 216 / 12%);
+  outline: none;
+}
+
+code {
+  background: #f1f5f9;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 0.9em;
+  padding: 0.15rem 0.35rem;
+}
+
 .shell {
   align-items: center;
   display: flex;
@@ -111,4 +139,80 @@ h1 {
   border-radius: 12px;
   margin: 0 0 1rem;
   padding: 0.85rem 1rem;
+}
+
+.auth-layout {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+}
+
+.auth-form,
+.side-panel,
+.dashboard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 1.25rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-form h2,
+.dashboard h2 {
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.auth-form label {
+  color: #334155;
+  display: grid;
+  font-weight: 700;
+  gap: 0.4rem;
+}
+
+.secondary {
+  background: #e2e8f0;
+  color: #172033;
+}
+
+.secondary:hover {
+  background: #cbd5e1;
+}
+
+.side-panel {
+  align-content: start;
+  color: #526071;
+  display: grid;
+  gap: 0.8rem;
+  line-height: 1.5;
+}
+
+.dashboard {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.muted {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 2rem;
+  }
 }

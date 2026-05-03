@@ -56,6 +56,38 @@ Check that all containers are running:
 docker compose ps
 ```
 
+## Seed Demo Data
+
+With the app running, create or refresh demo users:
+
+```sh
+docker compose exec backend python -m scripts.seed
+```
+
+The seed script is idempotent. It creates these users if missing and resets their passwords if they already exist:
+
+```text
+demo@example.com  / password123
+alice@example.com / password123
+bob@example.com   / password123
+```
+
+Test a seeded login from the command line:
+
+```sh
+curl -X POST http://localhost:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@example.com","password":"password123"}'
+```
+
+Expected response shape:
+
+```json
+{"id":"<user-id>","email":"demo@example.com"}
+```
+
+You can also open http://localhost:5173 and log in with one of the seeded accounts.
+
 Stop the app:
 
 ```sh
