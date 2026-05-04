@@ -28,10 +28,10 @@ The goal is not to build the final app in one shot. Each increment should leave 
 | Increment | Goal                                                                 | Status      |
 | --------- | -------------------------------------------------------------------- | ----------- |
 | 1         | Dockerized skeleton with FastAPI, React, Postgres, and health checks | Complete    |
-| 2         | Persisted users, password hashing, lightweight login, and auth UI     | Complete    |
+| 2         | Persisted users, password hashing, lightweight login, and auth UI    | Complete    |
 | 3         | Private watchlist CRUD with max-ten and duplicate validation         | Complete    |
 | 4         | `yfinance` price history endpoint and UI display states              | Complete    |
-| 5         | UI polish, line chart, sparklines, and finance-app design pass        | Complete    |
+| 5         | UI polish, line chart, sparklines, and finance-app design pass       | Complete    |
 | 6         | Focused tests and final manual verification                          | Not started |
 | 7         | Final README/WRITEUP for submission                                  | Not started |
 
@@ -257,6 +257,8 @@ flowchart LR
   Backend -->|"id and email"| Browser[localStorage_user]
 ```
 
+
+
 Trade-off:
 
 - This is not secure. In Increment 3, watchlist calls will use the locally stored user ID as the owner reference. That is acceptable for this scoped take-home only and should be called out in the final write-up as something production would replace with real sessions or signed tokens.
@@ -408,7 +410,7 @@ docker compose up --build
 docker compose exec backend python -m scripts.seed
 ```
 
-Then in the browser at http://localhost:5173:
+Then in the browser at [http://localhost:5173](http://localhost:5173):
 
 1. Log in as `demo@example.com` / `password123`.
 2. Click `AAPL` (or any seeded ticker) to load price history.
@@ -444,7 +446,7 @@ docker compose up --build
 docker compose exec backend python -m scripts.seed
 ```
 
-Then in the browser at http://localhost:5173:
+Then in the browser at [http://localhost:5173](http://localhost:5173):
 
 1. Log in as `demo@example.com` / `password123`.
 2. Confirm the brand header, status strip, and inline sparklines render.
@@ -461,13 +463,13 @@ file has a single, obvious responsibility.
 ### Backend changes
 
 - `app/main.py` shrank from 300 to 68 lines. It is now an app factory that
-  configures middleware, lifespan, and router includes only.
+configures middleware, lifespan, and router includes only.
 - New modules:
   - `app/config.py` — typed `Settings` loaded from env.
   - `app/logging_config.py` — shared logger and `configure_logging()`.
   - `app/database.py` — async engine, `SessionLocal`, declarative `Base`.
   - `app/security.py` — password hashing and string normalisation (pure
-    helpers with no FastAPI imports, easy to unit test).
+  helpers with no FastAPI imports, easy to unit test).
   - `app/validation.py` — request validators that raise HTTP 400.
   - `app/models.py` — `User` and `WatchlistItem` ORM tables.
   - `app/schemas.py` — Pydantic request/response models.
@@ -475,53 +477,53 @@ file has a single, obvious responsibility.
   - `app/routes/{health,auth,watchlist,prices}.py` — APIRouter per concern.
   - `app/services/prices.py` — moved from `app/prices.py`. Same logic.
 - `get_current_user` replaces the duplicated `get_user_or_404` calls. Routes
-  declare `user: User = Depends(get_current_user)` and never have to look up
-  the row themselves.
+declare `user: User = Depends(get_current_user)` and never have to look up
+the row themselves.
 - Routes also use a shared `session: AsyncSession = Depends(get_session)`
-  instead of opening their own `async with SessionLocal()` blocks.
+instead of opening their own `async with SessionLocal()` blocks.
 - `backend/scripts/seed.py` no longer imports from `app.main`. It pulls
-  helpers directly from `database`, `models`, `security`, `logging_config`.
+helpers directly from `database`, `models`, `security`, `logging_config`.
 
 ### Frontend changes
 
 - `src/main.tsx` shrank from 933 to 10 lines (just the React mount). All
-  app logic moved to `src/App.tsx`.
+app logic moved to `src/App.tsx`.
 - New folders:
   - `src/api/` — `client.ts`, `auth.ts`, `watchlist.ts`, `prices.ts`,
-    `health.ts`. All `fetch` calls live here behind named functions.
+  `health.ts`. All `fetch` calls live here behind named functions.
   - `src/auth/` — `AuthPanel.tsx`, `useUser.ts`, `useHealth.ts`.
   - `src/dashboard/` — `Dashboard.tsx`, `WatchlistPanel.tsx`,
-    `PricePanel.tsx`, plus `useWatchlist`/`usePrices` hooks.
+  `PricePanel.tsx`, plus `useWatchlist`/`usePrices` hooks.
   - `src/charts/` — `PriceLineChart.tsx`, `Sparkline.tsx`, `chartUtils.ts`.
   - `src/shared/` — `format.ts`, `StatusPill.tsx`.
   - `src/styles/` — `tokens.css`, `base.css`, `layout.css`, `header.css`,
-    `status.css`, `feedback.css`, `auth.css`, `dashboard.css`,
-    `watchlist.css`, `price-panel.css`, `responsive.css`, all imported via
-    `styles/index.css`.
+  `status.css`, `feedback.css`, `auth.css`, `dashboard.css`,
+  `watchlist.css`, `price-panel.css`, `responsive.css`, all imported via
+  `styles/index.css`.
 - `useWatchlist(userId)` owns list/add/remove/state. `usePrices(tickers)`
-  owns the price-history cache and refresh actions. `Dashboard` becomes a
-  ~50-line composition: it instantiates the two hooks, memoizes the ticker
-  array, and routes the active selection to either the empty state or the
-  `PricePanel`.
+owns the price-history cache and refresh actions. `Dashboard` becomes a
+~50-line composition: it instantiates the two hooks, memoizes the ticker
+array, and routes the active selection to either the empty state or the
+`PricePanel`.
 
 ### Verification
 
 - `python3 -c "ast.parse"` over every backend file succeeds.
 - `npx tsc --noEmit` passes.
 - `npm run build` produces a working production bundle (`vite build`,
-  47 modules, ~211 KB JS pre-gzip).
+47 modules, ~211 KB JS pre-gzip).
 - No behaviour changes intended; routes, payloads, and UI all match.
 
 ### Trade-offs
 
 - Pulled `models.py` and `schemas.py` into single files rather than
-  per-domain folders. Both are small (~40 lines) and it's easy to promote
-  to folders later when domains grow.
+per-domain folders. Both are small (~40 lines) and it's easy to promote
+to folders later when domains grow.
 - Kept the in-memory price cache inside `services/prices.py`. A real cache
-  would be Redis or similar, but the current TTL dict works at this scale.
+would be Redis or similar, but the current TTL dict works at this scale.
 - `usePrices` watches the `tickers` array reference; `Dashboard` memoizes
-  it via `useMemo` over `watchlist.items`. Without that, the hook would
-  re-fetch on every render.
+it via `useMemo` over `watchlist.items`. Without that, the hook would
+re-fetch on every render.
 
 ## Next Increment Plan: Logging, Tests, Final Docs
 
